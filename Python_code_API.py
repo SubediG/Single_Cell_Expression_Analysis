@@ -1,121 +1,146 @@
-import cellxgene_census
 import pandas as pd
-import scanpy as sc
-import math
-import tiledb
-import anndata
-from scipy.stats import ttest_ind
 import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from sklearn.neighbors import NearestNeighbors
 
 # interactive node
 #srun -n 4 --time=100:00:00 --pty bash -i
 #BIGMEM: srun -p bigmem -n 4 --time=100:00:00 --pty bash -i
 
-#my directory
-cd active/debruinz_project/gautam_subedi
+file1 = "/active/debruinz_project/CellCensus/Python/chunk10_metadata.csv"
+file2 = "/active/debruinz_project/CellCensus/Python/chunk10_counts.npz"
+df = pd.read_csv(file1)
+counts = np.load(file2)
 
-#opening soma
-census = cellxgene_census.open_soma()
+#Extracting matrix/counts from npz file as the format save in npz will not be in matrix
+keys = counts.files
+row_array = counts['row']
+col_array = counts['col']
+data_array = counts['data']
+count_matrix = np.zeros((row_array.max() + 1, col_array.max() + 1), dtype=data_array.dtype)
+count_matrix[row_array, col_array] = data_array
 
-# organ = 'string'
+# Extarcting metadata of cystic fibrosis and normal
+cystic = df[df["disease"] == "pulmonary fibrosis"]
+normal = df[df["disease"] == "normal"]
 
-# COVID-19 adata with filter
-adata_covid = cellxgene_census.get_anndata(
-    census=census,
-    organism="Homo sapiens",
-    obs_value_filter= "disease == 'COVID-19'and tissue_general == 'lung' and is_primary_data == True" ,
-    column_names = {"obs": ["assay", "cell_type", "tissue", "tissue_general", "disease"]},
-)
+#Extracting index related to cystic fibrosis and normal
+c_index = cystic.index
+n_index = normal.index
 
-#Normal adata with same filter
-adata_normal = cellxgene_census.get_anndata(
-    census=census,
-    organism="Homo sapiens",
-    obs_value_filter= "disease == 'normal'and tissue_general == 'lung' and is_primary_data == True" ,
-    column_names = {"obs": ["assay", "cell_type", "tissue", "tissue_general", "disease"]},
-)
+# Now using index, we are extracting count matrix related to cystic fibrosis and normal
+cystic_counts = count_matrix[:,c_index]
+normal_counts = count_matrix[:,n_index]
 
-#Saving adata as h5ad file
-output_path1 = "/active/debruinz_project/gautam_subedi/adata_covid.h5ad"
-output_path2 = "/active/debruinz_project/gautam_subedi/adata_normal.h5ad"
-adata_covid.write(output_path1)
-adata_normal.write(output_path2)
-
-#Read anndata
-covid_adata = anndata.read_h5ad("/active/debruinz_project/gautam_subedi/adata_covid.h5ad")
-normal_adata = anndata.read_h5ad("/active/debruinz_project/gautam_subedi/normal_covid.h5ad")
-
-#Fetching expression matrix
-covid_exp_mat = covid_adata.X
-normal_exp_mat = normal_adata.X
-
-#cehcking gene_names and cell_type of covid_data
-covid_adata.var.feature_name
-covid_adata.obs.cell_type
-
-#cehcking gene_names and cell_type of normal_data and covid and non-covid have same feature length and ids
-normal_adata.var.feature_name
-normal_adata.obs.cell_type
-
-#unique cell_type in covid_adata
-adata_covid.obs['cell_type'].unique  #70 categories
-adata_normal.obs.feature_name.unique  #60664
-
-## unique cell_type in normal
-adata_normal.obs['cell_type'].unique() #184 catrgoreis
-
-# This section shows common expression matrix containing genes and cells that are present in both.
-
-# Common cell_type
-unique_cell_types_covid = set(adata_covid.obs['cell_type'].unique())
-unique_cell_types_normal = set(adata_normal.obs['cell_type'].unique())
-common_cell_types = unique_cell_types_covid.intersection(unique_cell_types_normal)
-#print(common_cell_types)  = 66 common cell types
-
-# Output shows that they have same gene name and also at same position with same dimension
-covid_feature_names = set(covid_adata.var['feature_name'])
-normal_feature_names = set(normal_adata.var['feature_name'])
-common_feature_names = covid_feature_names.intersection(normal_feature_names)
-#len(common_feature_names)
-#60664
-
-gene_names = covid_adata.var.feature_name
-covid_gene_data = covid_exp_mat.toarray()
-normal_gene_data = normal_exp_mat.toarray()
-t_statistics, p_values = ttest_ind(covid_gene_data, normal_gene_data, equal_var=False)
-significant_genes_value = p_values < 0.05
-significant_gene_names = gene_names.values[significant_genes_value]
-significant_t_statistics = t_statistics[significant_genes_value]
-significant_p_values = p_values[significant_genes_value]
-significant_gene_names =significant_gene_names.astype(str) #Not necessary if saving in dataframe
-output_filename = "/active/debruinz_project/gautam_subedi/t_test_results.csv"
-df = pd.DataFrame(data)
-df.to_csv(output_filename, index=False)
+# Transposing the matrix as it will require same dimension of columns to pass into KNN model
+cystic_counts = cystic_counts.T
+normal_counts = normal_counts.T
 
 
-#another approach, This can be revised to use for sparse matrix
-#gene_names = covid_adata.var.feature_name
-#num_genes = covid_exp_mat.shape[1]
-#gene_indices = np.arange(0, num_genes)
-#t_statistics = np.zeros(num_genes)
-#p_values = np.zeros(num_genes)
-#significant_gene_names = []
-#significant_t_statistics = []
-#significant_p_values = []
-#for gene_index in range(num_genes):
-#    covid_gene_data = covid_exp_mat[:, gene_index].data
-#    normal_gene_data = normal_exp_mat[:, gene_index].data
-#    if len(covid_gene_data) >= 2 and len(normal_gene_data) >= 2:
-#        t_statistic, p_value = ttest_ind(covid_gene_data, normal_gene_data, equal_var=False)
-#        t_statistics[gene_index] = t_statistic
-#        p_values[gene_index] = p_value
-#        if p_value < 0.05:
-#            significant_gene_names.append(gene_names.values[gene_index])
-#            significant_t_statistics.append(t_statistic)
-#            significant_p_values.append(p_value)
-#    else:
-#        t_statistics[gene_index] = np.nan
-#        p_values[gene_index] = np.nan
+# Importing metadata and two ouptus of VAE Model
+file = "/active/debruinz_project/CellCensus/Python/chunk10_metadata.csv"
+file1 = "/active/debruinz_project/parker_bernreuter/model_outputs/model_output_2024-04-17-19-45-31.npz"
+file2 = "/active/debruinz_project/parker_bernreuter/model_outputs/model_output_2024-04-17-20-34-07.npz"
+df = pd.read_csv(file)
+counts1 = np.load(file1)
+counts2 = np.load(file2)
+
+
+# extracting matrix from npz file, here the approach for extracting matrix is a bit different than we did on the first approach
+keys1 = counts1.files
+keys2 = counts2.files
+matrix1 = counts1['arr_0']
+matrix2 = counts2['arr_0']
+
+
+# KNN model with euclidean metric
+k = 1
+knn = NearestNeighbors(n_neighbors=k, metric = 'euclidean')
+knn.fit(normal_counts)
+distances,indices = knn.kneighbors(cystic_counts)
+
+# min-max normalization
+def normalize_distances(distances):
+    min_distance = min(distances)
+    max_distance = max(distances)
+    normalized_distances = [(d - min_distance) / (max_distance - min_distance) for d in distances]
+    return normalized_distances
+
+# dataframe of indices and distances
+distances_normalized = normalize_distances(distances)
+df_distances = pd.DataFrame(distances_normalized, columns=["Distance"])
+df_indices = pd.DataFrame(indices, columns = ['NN_Index'])
+df_output = pd.concat([df_distances, df_indices], axis=1)
+
+
+# Tissue-type information extraction.
+tissue = df['tissue']
+tissue_index = tissue[df_output['NN_Index']]
+tissue_index = pd.DataFrame(tissue_index)
+tissue_index.reset_index(inplace=True)
+tissue_index.rename(columns={'index': 'NN_Index'}, inplace=True)
+merged_data = pd.merge(df_output, tissue_index, on = "NN_Index", how = "inner")
+grouped_data = merged_data.groupby('tissue')
+mean_values = grouped_data.mean()
+
+
+# Cell Type information extraction:
+cell_type = df['cell_type']
+cell_type_index = cell_type[df_output['NN_Index']]
+cell_type_index = pd.DataFrame(cell_type_index)
+cell_type_index.reset_index(inplace=True)
+cell_type_index.rename(columns={'index': 'NN_Index'}, inplace=True)
+merged_data_cell = pd.merge(df_output, cell_type_index, on = "NN_Index", how = "inner")
+grouped_data_cell = merged_data_cell.groupby('cell_type')
+mean_values_cell_type = grouped_data_cell['Distance'].mean()
+df_2 = pd.DataFrame(mean_values_cell_type)
+pivot_table = df_2.pivot_table(values='Distance', index='cell_type', aggfunc='mean')
+pivot_table = pivot_table.sort_values(by='Distance', ascending=False)
+
+
+#DOT plot of the affected cell types accoridng to mean of distances for each cel type.
+plt.figure(figsize=(10, 12))
+pivot_table1 = pivot_table.sort_values(by='Distance', ascending=True)
+sizes = 50 + (pivot_table1['Distance'] - pivot_table1['Distance'].min()) * 450
+
+colors = []
+for i in range(len(pivot_table1)):
+    if i < 5:
+        colors.append('green')
+    elif i >= len(pivot_table1) - 5:
+        colors.append('red')
+    else:
+        colors.append('blue')
+
+plt.scatter(pivot_table1['Distance'], pivot_table1['cell_type'], color=colors, alpha=0.7, s=sizes)
+plt.xlabel('Relative Distance', fontsize = 14, fontweight= 'semibold')
+plt.ylabel('Cell Types', fontsize = 14, fontweight= 'semibold')
+plt.xticks(fontsize=12)
+plt.grid(True, which='both', linestyle='--', linewidth=0.5, color='gray', alpha=0.5)
+plt.text(0.5, 1.05, 'Relative Differences Between', ha='center', va='bottom', fontsize=14, fontweight='bold', transform=plt.gca().transAxes)
+plt.text(0.5, 1.02, 'Cystic Fibrosis and Normal Cell Types', ha='center', va='bottom', fontsize=14, fontweight='bold', transform=plt.gca().transAxes)
+
+legend = plt.legend(handles=[plt.Line2D([0], [0], marker='o', color='w', label='Most affected', markerfacecolor='red', markersize=10),
+                    plt.Line2D([0], [0], marker='o', color='w', label='Least affected', markerfacecolor='green', markersize=10)],
+           loc='upper left', fontsize=12, frameon = True)
+legend.get_frame().set_linewidth(1.5)
+legend.get_frame().set_edgecolor('black')
+
+plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+plt.savefig('/active/debruinz_project/gautam_subedi/Python_KNN/graphs/dot_plot_minmax.png')
+
+
+
+# Bar Graph of affected tissue type informaton
+sns.set(style="whitegrid")
+plt.figure(figsize=(10, 6))
+sns.barplot(x=['lung', 'lung parenchyma', 'nose', 'respiratory airway' ], y='Distance', data=mean_values, color='skyblue')
+plt.xlabel('Tissues')
+plt.ylabel('Differences')
+plt.title('Mean Difference of Cystic Fibrosis and Normal Tissue')
+plt.savefig('/active/debruinz_project/gautam_subedi/Python_KNN/graphs/Bar_Graphs_minmax.png')
 
 
 

@@ -55,11 +55,31 @@ matrix1 = counts1['arr_0']
 matrix2 = counts2['arr_0']
 
 
-# KNN model with euclidean metric
-k = 1
-knn = NearestNeighbors(n_neighbors=k, metric = 'euclidean')
+# Function to determine best k using cross-validation
+def find_best_k(normal_counts, cystic_counts, k_range=range(1, 21)):
+    # Create the KNN model and use cross-validation to find the best k
+    best_k = None
+    best_score = float('inf')  # We want the smallest distance, so minimize the score
+    
+    for k in k_range:
+        knn = NearestNeighbors(n_neighbors=k, metric='euclidean')
+        knn.fit(normal_counts)
+        distances, indices = knn.kneighbors(cystic_counts)
+        mean_distance = np.mean(distances)  # Use mean distance as score
+        if mean_distance < best_score:
+            best_score = mean_distance
+            best_k = k
+    return best_k
+
+# Find the best k
+best_k = find_best_k(normal_counts, cystic_counts)
+
+
+# Using the best k, calculate the distances between cystic fibrosis and normal samples
+knn = NearestNeighbors(n_neighbors=best_k, metric='euclidean')
 knn.fit(normal_counts)
-distances,indices = knn.kneighbors(cystic_counts)
+distances, indices = knn.kneighbors(cystic_counts)
+
 
 # min-max normalization
 def normalize_distances(distances):

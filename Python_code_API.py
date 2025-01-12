@@ -38,7 +38,6 @@ normal_counts = count_matrix[:,n_index]
 cystic_counts = cystic_counts.T
 normal_counts = normal_counts.T
 
-
 # Importing metadata and two ouptus of VAE Model
 file = "/active/debruinz_project/CellCensus/Python/chunk10_metadata.csv"
 file1 = "/active/debruinz_project/parker_bernreuter/model_outputs/model_output_2024-04-17-19-45-31.npz"
@@ -78,18 +77,8 @@ best_k = find_best_k(normal_counts, cystic_counts)
 # Using the best k, calculate the distances between cystic fibrosis and normal samples
 knn = NearestNeighbors(n_neighbors=best_k, metric='cosine')
 knn.fit(normal_counts)
-distances, indices = knn.kneighbors(cystic_counts)
+distances_normalized, indices = knn.kneighbors(cystic_counts)
 
-
-# min-max normalization
-def normalize_distances(distances):
-    min_distance = min(distances)
-    max_distance = max(distances)
-    normalized_distances = [(d - min_distance) / (max_distance - min_distance) for d in distances]
-    return normalized_distances
-
-# dataframe of indices and distances
-distances_normalized = normalize_distances(distances)
 df_distances = pd.DataFrame(distances_normalized, columns=["Distance"])
 df_indices = pd.DataFrame(indices, columns = ['NN_Index'])
 df_output = pd.concat([df_distances, df_indices], axis=1)

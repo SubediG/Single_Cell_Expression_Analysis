@@ -62,7 +62,7 @@ def find_best_k(normal_counts, cystic_counts, k_range=range(1, 21)):
     best_score = float('inf')  # We want the smallest distance, so minimize the score
     
     for k in k_range:
-        knn = NearestNeighbors(n_neighbors=k, metric='euclidean')
+        knn = NearestNeighbors(n_neighbors=k, metric='cosine')
         knn.fit(normal_counts)
         distances, indices = knn.kneighbors(cystic_counts)
         mean_distance = np.mean(distances)  # Use mean distance as score
@@ -76,7 +76,7 @@ best_k = find_best_k(normal_counts, cystic_counts)
 
 
 # Using the best k, calculate the distances between cystic fibrosis and normal samples
-knn = NearestNeighbors(n_neighbors=best_k, metric='euclidean')
+knn = NearestNeighbors(n_neighbors=best_k, metric='cosine')
 knn.fit(normal_counts)
 distances, indices = knn.kneighbors(cystic_counts)
 

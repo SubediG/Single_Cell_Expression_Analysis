@@ -61,7 +61,7 @@ def find_best_k(normal_counts, cystic_counts, k_range=range(1, 21)):
     best_score = float('inf')  # We want the smallest distance, so minimize the score
     
     for k in k_range:
-        knn = NearestNeighbors(n_neighbors=k, metric='cosine')
+        knn = NearestNeighbors(n_neighbors=k, metric='manhattan')
         knn.fit(normal_counts)
         distances, indices = knn.kneighbors(cystic_counts)
         mean_distance = np.mean(distances)  # Use mean distance as score
@@ -75,10 +75,19 @@ best_k = find_best_k(normal_counts, cystic_counts)
 
 
 # Using the best k, calculate the distances between cystic fibrosis and normal samples
-knn = NearestNeighbors(n_neighbors=best_k, metric='cosine')
+knn = NearestNeighbors(n_neighbors=best_k, metric='manhattan')
 knn.fit(normal_counts)
-distances_normalized, indices = knn.kneighbors(cystic_counts)
+distances, indices = knn.kneighbors(cystic_counts)
 
+# min-max normalization
+def normalize_distances(distances):
+    min_distance = min(distances)
+    max_distance = max(distances)
+    normalized_distances = [(d - min_distance) / (max_distance - min_distance) for d in distances]
+    return normalized_distances
+
+# dataframe of indices and distances
+distances_normalized = normalize_distances(distances)
 df_distances = pd.DataFrame(distances_normalized, columns=["Distance"])
 df_indices = pd.DataFrame(indices, columns = ['NN_Index'])
 df_output = pd.concat([df_distances, df_indices], axis=1)
